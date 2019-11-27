@@ -1,17 +1,27 @@
 package swf
 
 import (
-	_ "io"
 	"net/http"
 )
 
+type HttpHandler func(ctx *Context)
+
 type Router struct {
-	repository map[string]func(ctx *Context)
+	repository map[string]Route
+}
+
+type Route struct {
+	handler     HttpHandler
+	middlewares []HttpHandler
 }
 
 // 给服务注册路由
-func (router *Router) Handle(method string, relativePath string, handler func(ctx *Context)) {
-	router.repository[relativePath] = handler
+func (router *Router) Handle(method string, relativePath string, handler HttpHandler, middlewares ...HttpHandler) {
+	route := Route{
+		handler:     handler,
+		middlewares: middlewares,
+	}
+	router.repository[relativePath] = route
 }
 
 // http请求入口
@@ -23,15 +33,20 @@ func (router *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// TODO: 支持更多的功能：rest api...
 	// handler := router.repository[requestURL]
-	var handler func(ctx *Context)
+	var handler HttpHandler
+	var middlewares []HttpHandler
 
-	if value, ok := router.repository[requestURL]; ok {
-		handler = value
+	if route, ok := router.repository[requestURL]; ok {
+		handler = route.handler
+		middlewares = route.middlewares
 	} else {
 		// handler notfound
 	}
 
 	// TODO: 可以在这里实现middleware
+	for _, middleware := range middlewares {
+		middleware(ctx)
+	}
 
 	// 处理请求
 	handler(ctx)
@@ -39,7 +54,7 @@ func (router *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func NewAPIBuilder() *Router {
 	api := &Router{
-		repository: map[string]func(ctx *Context){},
+		repository: map[string]Route{},
 	}
 	return api
 }
